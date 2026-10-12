@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">RainAuth 雨验</string>
+    <string name="subtitle">授权验证演示客户端 · jjyv2/v1</string>
+    <string name="hint_card">卡密</string>
+    <string name="btn_activate">激活 / 验证</string>
+    <string name="btn_local">本地功能（客户端闸门）</string>
+    <string name="btn_cloud">云端功能（服务端核验）</string>
+    <string name="btn_clear">清除本地票据</string>
+    <string name="section_features">功能入口</string>
+    <string name="section_log">日志</string>
+</resources>

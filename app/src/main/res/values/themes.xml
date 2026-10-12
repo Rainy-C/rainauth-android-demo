@@ -1,0 +1,19 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.RainAuthDemo" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">#68548D</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#EBDCFF</item>
+        <item name="colorOnPrimaryContainer">#503C74</item>
+        <item name="colorSurface">#FFFBFE</item>
+        <item name="colorOnSurface">#1C1B1F</item>
+        <item name="android:statusBarColor" tools:targetApi="l">#F8F1FA</item>
+    </style>
+
+    <style name="Mono">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">#49454F</item>
+    </style>
+</resources>
