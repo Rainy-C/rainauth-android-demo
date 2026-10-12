@@ -3,4 +3,5 @@
     <string name="subtitle">授权验证演示客户端</string>
     <string name="hint_card">请输入卡密</string>
     <string name="btn_verify">验 证</string>
+    <string name="btn_copy">复制授权信息</string>
 </resources>

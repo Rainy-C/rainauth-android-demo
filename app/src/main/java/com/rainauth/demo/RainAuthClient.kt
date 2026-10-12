@@ -175,12 +175,24 @@ class RainAuthClient(
                 .put("ct", RainCrypto.b64e(ct))
                 .toString()
 
-            val resp = post("$baseUrl/verify", body)
+            val raw = post("$baseUrl/verify", body)
+
+            // ⚠️ 服务端把信封包在 data 里：
+            //   { "code": 200, "data": { "seq":…, "n":…, "ct":… } }
+            // 顶层取 seq/n/ct 会全部落空。（握手同样是这层包装。）
+            // 这里同时兼容「已解包」与「未解包」两种形态，避免服务端调整后再次踩坑。
+            val resp = raw.optJSONObject("data") ?: raw
+
             val outSeq = resp.optLong("seq", -1)
             val outN = resp.optString("n")
             val outCt = resp.optString("ct")
             if (outSeq < 0 || outN.isEmpty() || outCt.isEmpty()) {
-                return@withContext Result.failure(Exception("验证响应缺少字段：$resp"))
+                // 业务错误（code != 200）时不会有信封，直接把服务端的话带出来
+                val code = raw.optInt("code", -1)
+                val msg = raw.optString("msg").ifEmpty { "响应结构异常" }
+                return@withContext Result.failure(
+                    Exception(if (code != -1 && code != 200) "$msg（HTTP 业务码 $code）" else msg)
+                )
             }
 
             val outNonce = RainCrypto.b64d(outN)

@@ -16,4 +16,21 @@
         <item name="android:textSize">12sp</item>
         <item name="android:textColor">#49454F</item>
     </style>
+
+    <style name="RowLabel">
+        <item name="android:layout_width">72dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">#7A6E93</item>
+    </style>
+
+    <style name="RowValue">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">#33284A</item>
+        <item name="android:textIsSelectable">true</item>
+    </style>
 </resources>
