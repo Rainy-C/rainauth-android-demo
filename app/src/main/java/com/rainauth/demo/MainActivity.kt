@@ -173,10 +173,16 @@ class MainActivity : AppCompatActivity() {
                 }
                 r.ticket?.let { t ->
                     store.save(t)
-                    val (sigOk, _) = RainAuthClient.verifyTicketOffline(t, pinnedE)
+                    val (sigOk, why) = RainAuthClient.verifyTicketOffline(t, pinnedE)
+                    // 票据上下文校验是客户端自愿做的，patch 掉即可绕过 ——
+                    // 这里保留是为了让示例流程完整，不是安全边界。
+                    val bound = t.dev == deviceId
+                    // 运行时环境检查（真的执行，不是空壳）
+                    val clean = runCatching { RainGuard.nativeCheckIntegrity(true) }
+                        .getOrDefault(false)
                     runCatching {
                         RainGuard.nativeUnlock(
-                            RainCrypto.ticketCanonical(t), sigOk, t.dev == deviceId, t.exp ?: 0L,
+                            RainCrypto.ticketCanonical(t), sigOk, bound && clean, t.exp ?: 0L,
                         )
                     }
                 }

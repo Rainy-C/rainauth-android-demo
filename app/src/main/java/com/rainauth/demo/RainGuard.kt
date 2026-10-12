@@ -1,21 +1,22 @@
 package com.rainauth.demo
 
 /**
- * 原生（C++）许可闸门。
+ * 原生（C++）许可闸门 —— **接入示例**。
  *
- * 设计意图：把「已解锁」这个状态**从 Kotlin 层挪走**，让简单的
- * `const/4 v0, 0x1` 补丁不再够用 —— 攻击者必须同时改 Java 层判定
- * 和 so 里的状态/校验。
+ * 演示的是「怎么把许可状态放进 native、在 JNI 边界上收口」，
+ * **不是**一套客户端防护方案。
  *
- * ⚠️ **这不是安全边界，只是提高成本。**
- * 任何在用户设备上运行的代码都可被分析、调试、修改。这个类存在的意义是
- * 让「破解」从 5 分钟变成半小时，而不是让它不可能。绕过方式至少有：
- *   1. Hook `nativeIsUnlocked()` 的返回值（Frida / Xposed）
- *   2. 直接 patch `librainguard.so` 里返回状态的汇编
- *   3. 绕过整个闸门，直接调用 `nativeFeaturePayload()` 或自己实现功能
- *   4. 把 so 换成自己的实现
+ * ⚠️ 必须清楚它的能力边界：
+ *   - `nativeUnlock` 的入参里有 Kotlin 侧算出的两个布尔（验签结果、设备绑定）。
+ *     native **无法独立复验**签名 —— 验签需要的固定公钥在 Kotlin 侧。
+ *     所以 patch Kotlin 让它们恒为 true，就能直接解锁。
+ *   - `nativeIsUnlocked` 是 native 里的一个可写全局 + 布尔返回，
+ *     两条指令即可改成恒真（Frida Hook 或直接 patch so）。
+ *   - `nativeFeaturePayload` 的载荷明文就在 so 里，`strings` 就能挖出来。
  *
- * 参考 README「可被攻破的部分」。
+ * 这些都是**示例的既定属性**，见项目 README「这是接入示例」一节。
+ * 任何在用户设备上运行的代码都无法成为可信执行环境 ——
+ * 真正需要保护的数据必须由服务端按授权下发。
  */
 object RainGuard {
 
@@ -26,10 +27,10 @@ object RainGuard {
     /**
      * 提交票据信息解锁。
      *
-     * @param ticketCanonical 票据规范化字节（供 native 侧独立摘要）
-     * @param sigOk Kotlin 层的验签结果 —— native 会复核，但不信任它是唯一依据
-     * @param deviceBound native 侧重新计算设备绑定摘要
-     * @param expEpoch 到期时间戳，0 表示永久
+     * @param ticketCanonical 票据规范化字节（native 侧压成摘要，仅作标识）
+     * @param sigOk           Kotlin 侧 Ed25519 验签结果
+     * @param deviceBound     Kotlin 侧设备绑定判定结果
+     * @param expEpoch        到期时间戳，0 表示永久
      */
     external fun nativeUnlock(
         ticketCanonical: ByteArray,
@@ -38,21 +39,22 @@ object RainGuard {
         expEpoch: Long,
     ): Boolean
 
-    /** 闸门状态（保存在 so 的静态区，不在 Kotlin 侧） */
+    /** 闸门状态。由 native 的 g_state + 到期时间派生。 */
     external fun nativeIsUnlocked(): Boolean
 
-    /** 上锁 */
+    /** 上锁，清空全部状态 */
     external fun nativeLock()
 
-    /**
-     * 取受保护功能的载荷。
-     * 只有在 native 侧处于解锁状态时才返回内容，否则返回空串。
-     */
+    /** 受保护功能的载荷。仅在解锁且未过期时返回内容。 */
     external fun nativeFeaturePayload(): String
 
-    /** so 自校验：代码段摘要 + 关键常量比对，失败说明二进制被改过 */
-    external fun nativeCheckIntegrity(): Boolean
+    /**
+     * 运行时环境检查：扫 /proc/self/maps 找注入框架痕迹 + 校验 so 加载路径。
+     *
+     * @param strict 严格模式。目前两种模式行为一致，保留参数以便后续区分。
+     */
+    external fun nativeCheckIntegrity(strict: Boolean): Boolean
 
-    /** 原生库版本，便于排查 */
+    /** 原生库版本 */
     external fun nativeVersion(): String
 }
