@@ -14,7 +14,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
+            android:layout_marginTop="24dp"
             android:text="@string/app_name"
             android:textSize="28sp"
             android:textStyle="bold"
@@ -33,7 +33,7 @@
             android:id="@+id/etCard"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginTop="36dp"
+            android:layout_marginTop="28dp"
             android:background="#F2ECF4"
             android:hint="@string/hint_card"
             android:inputType="textVisiblePassword"
@@ -57,15 +57,101 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
-        <!-- ══ 结果卡片 ══ -->
+        <!-- ══════ 公告 ══════ -->
+        <LinearLayout
+            android:id="@+id/announceBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:orientation="vertical"
+            android:background="#FFF4E5"
+            android:padding="18dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📢"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/section_announce"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="#7A4E00" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/announceList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="vertical" />
+        </LinearLayout>
+
+        <!-- ══════ 版本 ══════ -->
+        <LinearLayout
+            android:id="@+id/versionBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="vertical"
+            android:background="#E3F2FD"
+            android:padding="18dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⬆"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/tvVersionTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="#0D47A1" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvVersionBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:fontFamily="monospace"
+                android:lineSpacingExtra="5dp"
+                android:textSize="12.5sp"
+                android:textColor="#0D47A1" />
+        </LinearLayout>
+
+        <!-- ══════ 渲染后的授权卡片 ══════ -->
         <LinearLayout
             android:id="@+id/card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="26dp"
+            android:layout_marginTop="18dp"
             android:orientation="vertical"
             android:background="#EBDCFF"
             android:padding="22dp"
@@ -103,7 +189,6 @@
                 android:layout_marginBottom="6dp"
                 android:background="#C9B8E8" />
 
-            <!-- 数据行由代码动态填充 -->
             <LinearLayout
                 android:id="@+id/rows"
                 android:layout_width="match_parent"
@@ -118,6 +203,67 @@
                 android:layout_marginTop="16dp"
                 android:text="@string/btn_copy"
                 android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- ══════ 原始 JSON ══════ -->
+        <LinearLayout
+            android:id="@+id/rawBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:orientation="vertical"
+            android:background="#1D1B20"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/section_raw"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#CFC4DC" />
+
+                <TextView
+                    android:id="@+id/btnToggleRaw"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="6dp"
+                    android:text="@string/raw_collapse"
+                    android:textSize="12sp"
+                    android:textColor="#D0BCFF" />
+            </LinearLayout>
+
+            <HorizontalScrollView
+                android:id="@+id/rawScroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/tvRaw"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:lineSpacingExtra="3dp"
+                    android:textSize="11sp"
+                    android:textColor="#E7E0E8"
+                    android:textIsSelectable="true" />
+            </HorizontalScrollView>
+
+            <LinearLayout
+                android:id="@+id/rawTabs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal" />
         </LinearLayout>
 
     </LinearLayout>

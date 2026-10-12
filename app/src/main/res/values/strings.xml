@@ -4,4 +4,8 @@
     <string name="hint_card">请输入卡密</string>
     <string name="btn_verify">验 证</string>
     <string name="btn_copy">复制授权信息</string>
+    <string name="section_announce">应用公告</string>
+    <string name="section_raw">原始数据</string>
+    <string name="raw_collapse">收起</string>
+    <string name="raw_expand">展开</string>
 </resources>

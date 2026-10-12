@@ -3,6 +3,8 @@ package com.rainauth.demo
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -18,7 +20,13 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * RainAuth 演示客户端 —— 输入卡密、验证、展示授权信息。
+ * RainAuth 演示客户端。
+ *
+ * 三块展示区：
+ *   ① 公告        —— 来自 /client/announce
+ *   ② 版本        —— 来自 /client/version
+ *   ③ 授权卡片    —— 协议验证结果，结构化渲染
+ * 外加一块「原始数据」，按标签页切换查看各阶段真实报文。
  */
 class MainActivity : AppCompatActivity() {
 
@@ -26,6 +34,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: TicketStore
     private var deviceId = ""
     private var lastReport = ""
+
+    /** 原始报文快照：标题 → 内容 */
+    private val rawPages = linkedMapOf<String, String>()
+    private var rawIndex = 0
 
     private val pinnedX by lazy { RainCrypto.b64d(Config.pinnedX25519B64) }
     private val pinnedE by lazy { RainCrypto.b64d(Config.pinnedEd25519B64) }
@@ -40,9 +52,92 @@ class MainActivity : AppCompatActivity() {
 
         b.btnVerify.setOnClickListener { verify() }
         b.btnCopy.setOnClickListener { copyReport() }
+        b.btnToggleRaw.setOnClickListener { toggleRaw() }
+
+        // 启动即拉公告与版本（不需要卡密）
+        loadAnnounceAndVersion()
     }
 
-    // ── 验证流程 ────────────────────────────────────────────
+    // ══ 公告 + 版本 ════════════════════════════════════════
+    private fun loadAnnounceAndVersion() {
+        if (!Config.isConfigured) return
+        lifecycleScope.launch {
+            RainApi.announcements(Config.baseUrl, Config.appKey)
+                .onSuccess { showAnnouncements(it) }
+                .onFailure { /* 公告失败不打扰用户 */ }
+
+            RainApi.version(Config.baseUrl, Config.appKey, BuildConfig.VERSION_NAME)
+                .onSuccess { showVersion(it) }
+                .onFailure { }
+        }
+    }
+
+    private fun showAnnouncements(list: List<Announce>) {
+        if (list.isEmpty()) {
+            b.announceBox.visibility = View.GONE
+            return
+        }
+        b.announceList.removeAllViews()
+        list.take(5).forEachIndexed { i, a ->
+            val tv = TextView(this).apply {
+                text = buildString {
+                    if (a.title.isNotBlank()) append(a.title).append('\n')
+                    append(a.content)
+                    append("\n")
+                    append(fmtDate(a.createdAt))
+                    if (a.global) append("  ·  全局")
+                }
+                textSize = 13f
+                setTextColor(0xFF5C3D00.toInt())
+                setLineSpacing(dp(3).toFloat(), 1f)
+                setTextIsSelectable(true)
+            }
+            if (i > 0) {
+                val d = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
+                    ).also { it.topMargin = dp(10); it.bottomMargin = dp(10) }
+                    setBackgroundColor(0x33A07400)
+                }
+                b.announceList.addView(d)
+            }
+            b.announceList.addView(tv)
+        }
+        b.announceBox.visibility = View.VISIBLE
+    }
+
+    private fun showVersion(v: VersionInfo) {
+        b.versionBox.visibility = View.VISIBLE
+        if (!v.hasUpdate) {
+            b.tvVersionTitle.text = "已是最新版本"
+            b.tvVersionBody.text = "当前版本  ${v.current}"
+            b.versionBox.setBackgroundColor(0xFFE8F5E9.toInt())
+            b.tvVersionTitle.setTextColor(0xFF1B5E20.toInt())
+            b.tvVersionBody.setTextColor(0xFF1B5E20.toInt())
+            return
+        }
+        b.versionBox.setBackgroundColor(0xFFE3F2FD.toInt())
+        b.tvVersionTitle.setTextColor(0xFF0D47A1.toInt())
+        b.tvVersionBody.setTextColor(0xFF0D47A1.toInt())
+        b.tvVersionTitle.text = if (v.forceUpdate) "发现新版本（强制更新）" else "发现新版本"
+        b.tvVersionBody.text = buildString {
+            appendLine("当前版本  ${v.current}")
+            appendLine("最新版本  ${v.latest ?: "-"}")
+            v.changelog?.let { appendLine("更新说明  $it") }
+            appendLine()
+            append("注意：has_update 由服务端做字符串不等比较，")
+            append("不是语义化版本大小比较 —— 换回旧版本号同样会提示更新。")
+        }
+        if (v.downloadUrl != null) {
+            b.tvVersionBody.setOnClickListener {
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(v.downloadUrl)))
+                }
+            }
+        }
+    }
+
+    // ══ 验证 ══════════════════════════════════════════════
     private fun verify() {
         val card = b.etCard.text?.toString()?.trim().orEmpty()
         if (card.isEmpty()) {
@@ -59,21 +154,23 @@ class MainActivity : AppCompatActivity() {
                     Config.baseUrl, Config.appKey, Config.appSecret, pinnedX, pinnedE,
                 )
                 client.handshake().onFailure {
+                    collectRaw(client)
                     showError("连接失败", it.message ?: "无法建立安全会话")
                     return@launch
                 }
                 val r = client.verify(
                     card = card, device = deviceId, deviceName = DeviceId.model(),
                 ).getOrElse {
+                    collectRaw(client)
                     showError("请求失败", it.message ?: "未知错误")
                     return@launch
                 }
+                collectRaw(client)
+
                 if (!r.ok) {
                     showError("验证未通过", r.msg.ifBlank { "服务端拒绝了本次验证" })
                     return@launch
                 }
-
-                // 票据落盘 + 解锁本地闸门
                 r.ticket?.let { t ->
                     store.save(t)
                     val (sigOk, _) = RainAuthClient.verifyTicketOffline(t, pinnedE)
@@ -91,7 +188,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── 成功卡片 ────────────────────────────────────────────
+    // ══ 授权卡片 ══════════════════════════════════════════
     private fun showSuccess(card: String, r: VerifyResult) {
         val unlocked = runCatching { RainGuard.nativeIsUnlocked() }.getOrDefault(false)
 
@@ -108,7 +205,7 @@ class MainActivity : AppCompatActivity() {
 
         b.rows.removeAllViews()
         addRow("卡密", card)
-        addRow("到期时间", expText, highlight = true)
+        addRow("到期时间", expText, highlight = isNearExpiry(r.expireAt))
         addRow("剩余时长", remainText, highlight = isNearExpiry(r.expireAt))
         addRow("设备占用", devText)
         addRow("用户 ID", r.userId?.toString() ?: "-")
@@ -128,9 +225,9 @@ class MainActivity : AppCompatActivity() {
             appendLine("服务器时间 ${r.serverTime ?: "-"}")
         }
         b.card.visibility = View.VISIBLE
+        renderRaw()
     }
 
-    // ── 失败卡片 ────────────────────────────────────────────
     private fun showError(title: String, detail: String) {
         runCatching { RainGuard.nativeLock() }
 
@@ -146,47 +243,99 @@ class MainActivity : AppCompatActivity() {
 
         lastReport = "$title\n\n$detail"
         b.card.visibility = View.VISIBLE
+        renderRaw()
     }
 
-    // ── 行构造 ──────────────────────────────────────────────
+    // ══ 原始数据 ══════════════════════════════════════════
+    private fun collectRaw(c: RainAuthClient) {
+        rawPages.clear()
+        if (c.rawHsRequest.isNotBlank()) rawPages["握手请求"] = c.rawHsRequest
+        if (c.rawHsResponse.isNotBlank()) rawPages["握手响应"] = c.rawHsResponse
+        if (c.rawVerifyRequest.isNotBlank()) rawPages["验证请求"] = c.rawVerifyRequest
+        if (c.rawVerifyResponse.isNotBlank()) rawPages["验证响应"] = c.rawVerifyResponse
+        if (c.rawInnerReply.isNotBlank()) rawPages["解密回包"] = c.rawInnerReply
+        if (c.rawTicket.isNotBlank()) rawPages["授权票据"] = c.rawTicket
+        rawIndex = rawPages.keys.indexOf("解密回包").takeIf { it >= 0 } ?: 0
+    }
+
+    private fun renderRaw() {
+        if (rawPages.isEmpty()) {
+            b.rawBox.visibility = View.GONE
+            return
+        }
+        b.rawBox.visibility = View.VISIBLE
+
+        // 标签页
+        b.rawTabs.removeAllViews()
+        rawPages.keys.forEachIndexed { i, name ->
+            val tv = TextView(this).apply {
+                text = name
+                textSize = 11.5f
+                setPadding(dp(10), dp(5), dp(10), dp(5))
+                setOnClickListener {
+                    rawIndex = i
+                    renderRaw()
+                }
+                if (i == rawIndex) {
+                    setTextColor(0xFF1D1B20.toInt())
+                    setBackgroundColor(0xFFD0BCFF.toInt())
+                } else {
+                    setTextColor(0xFFCFC4DC.toInt())
+                }
+            }
+            b.rawTabs.addView(tv)
+            b.rawTabs.addView(View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(6), 1)
+            })
+        }
+
+        val name = rawPages.keys.elementAtOrNull(rawIndex) ?: return
+        b.tvRaw.text = JsonPretty.format(rawPages[name] ?: "")
+    }
+
+    private fun toggleRaw() {
+        val showing = b.rawScroll.visibility == View.VISIBLE
+        b.rawScroll.visibility = if (showing) View.GONE else View.VISIBLE
+        b.rawTabs.visibility = if (showing) View.GONE else View.VISIBLE
+        b.btnToggleRaw.text = getString(
+            if (showing) R.string.raw_expand else R.string.raw_collapse
+        )
+    }
+
+    // ══ 视图工具 ══════════════════════════════════════════
     private fun addRow(label: String, value: String, highlight: Boolean = false) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.TOP
             setPadding(0, dp(7), 0, dp(7))
         }
-        val tvLabel = TextView(this).apply {
+        row.addView(TextView(this).apply {
             text = label
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
             textSize = 13f
             setTextColor(0xFF7A6E93.toInt())
             layoutParams = LinearLayout.LayoutParams(dp(74), LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-        val tvValue = TextView(this).apply {
+        })
+        row.addView(TextView(this).apply {
             text = value
             typeface = android.graphics.Typeface.MONOSPACE
             textSize = 13.5f
             setTextColor(if (highlight) 0xFF93000A.toInt() else 0xFF33284A.toInt())
             setTextIsSelectable(true)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        row.addView(tvLabel)
-        row.addView(tvValue)
+        })
         b.rows.addView(row)
     }
 
     private fun addRowText(text: String, color: Int) {
-        val tv = TextView(this).apply {
+        b.rows.addView(TextView(this).apply {
             this.text = text
             textSize = 13.5f
             setTextColor(color)
             setTextIsSelectable(true)
             setPadding(0, dp(6), 0, dp(6))
-        }
-        b.rows.addView(tv)
+        })
     }
 
-    // ── 复制 ────────────────────────────────────────────────
     private fun copyReport() {
         if (lastReport.isBlank()) return
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -194,7 +343,7 @@ class MainActivity : AppCompatActivity() {
         toast("已复制到剪贴板")
     }
 
-    // ── 工具 ────────────────────────────────────────────────
+    // ══ 时间工具 ══════════════════════════════════════════
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -214,6 +363,11 @@ class MainActivity : AppCompatActivity() {
         return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(t))
     }
 
+    private fun fmtDate(iso: String): String {
+        val t = parseIso(iso) ?: return iso.take(10)
+        return SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(t))
+    }
+
     private fun remain(iso: String): String {
         val end = parseIso(iso) ?: return "—"
         val ms = end - System.currentTimeMillis()
@@ -221,10 +375,13 @@ class MainActivity : AppCompatActivity() {
         val d = ms / 86400000
         val h = (ms % 86400000) / 3600000
         val m = (ms % 3600000) / 60000
-        return if (d > 0) "$d 天 $h 小时" else if (h > 0) "$h 小时 $m 分" else "$m 分钟"
+        return when {
+            d > 0 -> "$d 天 $h 小时"
+            h > 0 -> "$h 小时 $m 分"
+            else -> "$m 分钟"
+        }
     }
 
-    /** 剩余不足 3 天时用醒目色提示 */
     private fun isNearExpiry(iso: String?): Boolean {
         val end = iso?.let { parseIso(it) } ?: return false
         return end - System.currentTimeMillis() < 3L * 86400000

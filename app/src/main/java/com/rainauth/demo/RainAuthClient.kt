@@ -64,6 +64,15 @@ class RainAuthClient(
 
     val sessionId: String get() = sid
 
+    // ── 原始报文留档，供界面「原始数据」区展示 ──
+    // 只读，不参与任何判定 —— 展示用，改了它也不影响验证结果。
+    var rawHsRequest: String = ""; private set
+    var rawHsResponse: String = ""; private set
+    var rawVerifyRequest: String = ""; private set
+    var rawVerifyResponse: String = ""; private set
+    var rawInnerReply: String = ""; private set
+    var rawTicket: String = ""; private set
+
     /**
      * 握手。三重 DH：
      *   dh1 = X25519(e_c, e_s)          临时×临时，前向保密
@@ -90,7 +99,9 @@ class RainAuthClient(
                 .put("ts", ts)
                 .toString()
 
+            rawHsRequest = body
             val resp = post("$baseUrl/hs", body)
+            rawHsResponse = resp.toString()
             val d = resp.optJSONObject("data") ?: resp
             val newSid = d.optString("sid")
             val b64Es = d.optString("e_s")
@@ -175,7 +186,9 @@ class RainAuthClient(
                 .put("ct", RainCrypto.b64e(ct))
                 .toString()
 
+            rawVerifyRequest = body
             val raw = post("$baseUrl/verify", body)
+            rawVerifyResponse = raw.toString()
 
             // ⚠️ 服务端把信封包在 data 里：
             //   { "code": 200, "data": { "seq":…, "n":…, "ct":… } }
@@ -203,6 +216,10 @@ class RainAuthClient(
             seq = next
 
             val reply = JSONObject(String(plain))
+            rawInnerReply = reply.toString()
+            reply.optJSONObject("data")?.optJSONObject("ticket")?.let {
+                rawTicket = it.toString()
+            }
             val ok = reply.optBoolean("ok", false)
             val msg = reply.optString("msg")
             val data = reply.optJSONObject("data")
