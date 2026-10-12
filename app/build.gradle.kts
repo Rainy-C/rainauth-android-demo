@@ -57,6 +57,10 @@ android {
             storePassword = "rainauth"
             keyAlias = "rainauth"
             keyPassword = "rainauth"
+            // 说明：APK 最终用 v2 方案签名。
+            // minSdk=24（Android 7.0）起 v2 已被完整支持，AGP 默认只做 v2，
+            // 这也是现代 Android 的标准做法 —— 不是配置遗漏。
+            // 若将来需要支持 API 23 及以下，再显式打开 enableV1Signing。
         }
     }
 
@@ -90,9 +94,15 @@ android {
     }
 
     packaging {
+        // BouncyCastle 等依赖是签名过的 jar，它们自带的 META-INF 签名文件
+        // 必须剔除，否则打包会出现重复条目。注意：剔除的是**依赖自带**的
+        // 签名，APK 自身的 v2 签名在打包之后由 signingConfig 附加，不受影响。
         resources.excludes += setOf(
             "META-INF/versions/**",
             "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA",
+            "META-INF/*.EC",
+            "META-INF/DEPENDENCIES",
+            "META-INF/LICENSE*", "META-INF/NOTICE*",
         )
     }
 
