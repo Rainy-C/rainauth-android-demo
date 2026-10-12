@@ -21,14 +21,34 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 准备 Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: '11076708'
-
-      - name: 安装 NDK 与 CMake
+      # ubuntu-latest 运行器已预装 Android SDK（含 cmdline-tools 与 platform-tools），
+      # 因此不引入 setup-android —— 它会尝试装一个并不存在的 'tools' 包而失败。
+      # 这里只做两件事：接受许可、补齐 NDK / CMake / 目标平台。
+      - name: 补齐 SDK 组件
         run: |
-          sdkmanager --install "ndk;27.0.12077973" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0"
+          set -e
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+
+          SDKMGR="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMGR" ]; then
+            SDKMGR="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "使用 sdkmanager: $SDKMGR"
+          "$SDKMGR" --version
+
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+
+          "$SDKMGR" --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "platform-tools" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+
+          echo "── 已装组件 ──"
+          ls "$SDK/platforms" "$SDK/build-tools" "$SDK/ndk" "$SDK/cmake"
 
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@v4
@@ -37,7 +57,7 @@ jobs:
         run: chmod +x ./gradlew
 
       # 接入参数由 Repository Secrets 注入。
-      # 全部缺失时也能构建成功 —— App 启动后会提示「未配置」，不会崩溃。
+      # 全部缺失也能构建成功 —— App 启动后会提示「未配置」，不会崩溃。
       - name: 构建 debug 与 release
         env:
           BASE_URL: ${{ secrets.RAINAUTH_BASE_URL }}
@@ -46,7 +66,8 @@ jobs:
           X25519_PUB: ${{ secrets.RAINAUTH_X25519_PUB }}
           ED25519_PUB: ${{ secrets.RAINAUTH_ED25519_PUB }}
         run: |
-          ./gradlew --no-daemon assembleDebug assembleRelease \
+          ./gradlew --no-daemon --stacktrace \
+            assembleDebug assembleRelease \
             -PRAINAUTH_BASE_URL="$BASE_URL" \
             -PRAINAUTH_APP_KEY="$APP_KEY" \
             -PRAINAUTH_APP_SECRET="$APP_SECRET" \
@@ -54,14 +75,17 @@ jobs:
             -PRAINAUTH_ED25519_PUB="$ED25519_PUB"
 
       - name: 汇总产物信息
+        if: always()
         run: |
-          echo "### APK 产物" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          for f in $(find app/build/outputs/apk -name '*.apk'); do
-            SIZE=$(du -h "$f" | cut -f1)
-            SHA=$(sha256sum "$f" | cut -c1-16)
-            echo "- \`$f\`  $SIZE  sha256:$SHA…" >> $GITHUB_STEP_SUMMARY
-          done
+          {
+            echo "### APK 产物"
+            echo ""
+            echo "| 文件 | 大小 | sha256 |"
+            echo "|---|---|---|"
+            find app/build/outputs/apk -name '*.apk' 2>/dev/null | while read f; do
+              echo "| \`$f\` | $(du -h "$f" | cut -f1) | \`$(sha256sum "$f" | cut -c1-16)…\` |"
+            done
+          } >> $GITHUB_STEP_SUMMARY
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
